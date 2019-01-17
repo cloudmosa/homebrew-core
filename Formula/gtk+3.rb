@@ -3,7 +3,7 @@ class Gtkx3 < Formula
   homepage "https://gtk.org/"
   url "https://download.gnome.org/sources/gtk+/3.24/gtk+-3.24.3.tar.xz"
   sha256 "5708fa534d964b1fb9a69d15758729d51b9a438471d4612dc153f595904803bd"
-  revision 1
+  revision 2
 
   bottle do
     sha256 "0ff37c31034d15b1e145cdbc430aeb5b0d4f745ddf0048ec2620f840c0f0f1c7" => :mojave
@@ -323,3 +323,15 @@ diff -u gtk+-3.24.2-origin/gdk/quartz/gdkscreen-quartz.c gtk+-3.24.2/gdk/quartz/
      }
  
    screen->width = max_x - screen->min_x;
+diff -u gtk+-3.24.3/modules/input/imquartz.c gtk+-3.24.3-working/modules/input/imquartz.c
+--- gtk+-3.24.3/modules/input/imquartz.c        2019-01-13 19:06:51.000000000 -0800
++++ gtk+-3.24.3-working/modules/input/imquartz.c        2019-01-16 17:54:36.000000000 -0800
+@@ -196,7 +196,7 @@
+     {
+       if (event->hardware_keycode == 0 && event->keyval == 0xffffff)
+         /* update text input changes by mouse events */
+-        return output_result (context, win);
++        return output_result (context, event->window);
+       else
+         return gtk_im_context_filter_keypress (qc->slave, event);
+     }
