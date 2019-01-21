@@ -113,9 +113,13 @@ end
 
 __END__
 
+https://gitlab.gnome.org/GNOME/gtk/issues/1593
 Fix bug that gdk_monitor_get_workarea() always return workarea for main screen.
 Fix bug that gdk_monitor_get_geometry() return wrong gemotry that is NOT based on GdkScreen coordination,
 this bug causes gdk_display_get_monitor_at_point() can not find correct monitor at point.
+
+https://gitlab.gnome.org/GNOME/gtk/issues/1600
+Fix bug it crash when use mouse to select item in input method cadinate window
 
 ---
 diff -u gtk+-3.24.2-origin/gdk/quartz/gdkdisplay-quartz.c gtk+-3.24.2/gdk/quartz/gdkdisplay-quartz.c
