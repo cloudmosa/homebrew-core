@@ -3,7 +3,7 @@ class Gtkx3 < Formula
   homepage "https://gtk.org/"
   url "https://download.gnome.org/sources/gtk+/3.24/gtk+-3.24.3.tar.xz"
   sha256 "5708fa534d964b1fb9a69d15758729d51b9a438471d4612dc153f595904803bd"
-  revision 2
+  revision 3
 
   bottle do
     sha256 "0ff37c31034d15b1e145cdbc430aeb5b0d4f745ddf0048ec2620f840c0f0f1c7" => :mojave
@@ -120,6 +120,9 @@ this bug causes gdk_display_get_monitor_at_point() can not find correct monitor 
 
 https://gitlab.gnome.org/GNOME/gtk/issues/1600
 Fix bug it crash when use mouse to select item in input method cadinate window
+
+https://gitlab.gnome.org/GNOME/gtk/issues/1618
+Fix bug that GTK Entry on macOS does not support press-and-hold to input accented characters.
 
 ---
 diff -u gtk+-3.24.2-origin/gdk/quartz/gdkdisplay-quartz.c gtk+-3.24.2/gdk/quartz/gdkdisplay-quartz.c
@@ -338,4 +341,94 @@ diff -u gtk+-3.24.3/modules/input/imquartz.c gtk+-3.24.3-working/modules/input/i
 +        return output_result (context, event->window);
        else
          return gtk_im_context_filter_keypress (qc->slave, event);
+     }
+diff -r -u gtk+-3.24.3/gdk/quartz/GdkQuartzView.c gtk+-3.24.3-working/gdk/quartz/GdkQuartzView.c
+--- gtk+-3.24.3/gdk/quartz/GdkQuartzView.c	2019-01-07 17:18:10.000000000 -0800
++++ gtk+-3.24.3-working/gdk/quartz/GdkQuartzView.c	2019-01-23 21:08:45.000000000 -0800
+@@ -31,7 +31,7 @@
+   if ((self = [super initWithFrame: frameRect]))
+     {
+       markedRange = NSMakeRange (NSNotFound, 0);
+-      selectedRange = NSMakeRange (NSNotFound, 0);
++      selectedRange = NSMakeRange (0, 0);
+     }
+ 
+   return self;
+@@ -124,7 +124,8 @@
+ -(void)unmarkText
+ {
+   GDK_NOTE (EVENTS, g_message ("unmarkText"));
+-  markedRange = selectedRange = NSMakeRange (NSNotFound, 0);
++  selectedRange = NSMakeRange (0, 0);
++  markedRange = NSMakeRange (NSNotFound, 0);
+ 
+   g_object_set_data_full (G_OBJECT (gdk_window), TIC_MARKED_TEXT, NULL, g_free);
+ }
+@@ -209,8 +210,15 @@
+   else
+    {
+       str = [string UTF8String];
++      selectedRange = NSMakeRange ([string length], 0);
+    }
+ 
++  if (replacementRange.length > 0)
++    {
++      g_object_set_data (G_OBJECT (gdk_window), TIC_INSERT_TEXT_REPLACE_LEN,
++                         GINT_TO_POINTER (replacementRange.length));
++    }
++
+   g_object_set_data_full (G_OBJECT (gdk_window), TIC_INSERT_TEXT, g_strdup (str), g_free);
+   GDK_NOTE (EVENTS, g_message ("insertText: set %s (%p, nsview %p): %s",
+ 			     TIC_INSERT_TEXT, gdk_window, self,
+diff -r -u gtk+-3.24.3/gdk/quartz/GdkQuartzView.h gtk+-3.24.3-working/gdk/quartz/GdkQuartzView.h
+--- gtk+-3.24.3/gdk/quartz/GdkQuartzView.h	2019-01-07 17:18:10.000000000 -0800
++++ gtk+-3.24.3-working/gdk/quartz/GdkQuartzView.h	2019-01-22 20:31:06.000000000 -0800
+@@ -24,6 +24,7 @@
+ #define TIC_SELECTED_POS  "tic-selected-pos"
+ #define TIC_SELECTED_LEN  "tic-selected-len"
+ #define TIC_INSERT_TEXT "tic-insert-text"
++#define TIC_INSERT_TEXT_REPLACE_LEN "tic-insert-text-replace-len"
+ #define TIC_IN_KEY_DOWN "tic-in-key-down"
+ 
+ /* GtkIMContext */
+diff -r -u gtk+-3.24.3/modules/input/imquartz.c gtk+-3.24.3-working/modules/input/imquartz.c
+--- gtk+-3.24.3/modules/input/imquartz.c	2019-01-24 15:08:10.000000000 -0800
++++ gtk+-3.24.3-working/modules/input/imquartz.c	2019-01-24 15:27:49.000000000 -0800
+@@ -129,8 +129,11 @@
+ {
+   GtkIMContextQuartz *qc = GTK_IM_CONTEXT_QUARTZ (context);
+   gboolean retval = FALSE;
++  int fixed_str_replace_len;
+   gchar *fixed_str, *marked_str;
+ 
++  fixed_str_replace_len = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (win),
++      TIC_INSERT_TEXT_REPLACE_LEN));
+   fixed_str = g_strdup (g_object_get_data (G_OBJECT (win), TIC_INSERT_TEXT));
+   marked_str = g_strdup (g_object_get_data (G_OBJECT (win), TIC_MARKED_TEXT));
+   if (fixed_str)
+@@ -139,6 +142,13 @@
+       g_free (qc->preedit_str);
+       qc->preedit_str = NULL;
+       g_object_set_data (G_OBJECT (win), TIC_INSERT_TEXT, NULL);
++      if (fixed_str_replace_len)
++        {
++          gboolean retval;
++          g_object_set_data (G_OBJECT (win), TIC_INSERT_TEXT_REPLACE_LEN, 0);
++          g_signal_emit_by_name (context, "delete-surrounding",
++              -fixed_str_replace_len, fixed_str_replace_len, &retval);
++        }
+       g_signal_emit_by_name (context, "commit", fixed_str);
+       g_signal_emit_by_name (context, "preedit_changed");
+ 
+@@ -168,6 +178,11 @@
+     }
+   if (!fixed_str && !marked_str)
+     {
++      unsigned int filtered =
++	  GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (win),
++					       GIC_FILTER_KEY));
++      if (filtered)
++        retval = TRUE;
+       if (qc->preedit_str && strlen (qc->preedit_str) > 0)
+         retval = TRUE;
      }
