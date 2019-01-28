@@ -3,7 +3,7 @@ class Pango < Formula
   homepage "https://www.pango.org/"
   url "https://download.gnome.org/sources/pango/1.42/pango-1.42.4.tar.xz"
   sha256 "1d2b74cd63e8bd41961f2f8d952355aa0f9be6002b52c8aa7699d9f5da597c9d"
-  revision 2
+  revision 3
 
   bottle do
     sha256 "16c404ecab2dcf3d6eda9b93fe512c0f6b90b0d73887f80da814bc5d470c1ef3" => :mojave
@@ -28,7 +28,11 @@ class Pango < Formula
   depends_on "glib"
   depends_on "harfbuzz"
 
-  patch :DATA
+  # See https://gitlab.gnome.org/GNOME/pango/issues/348
+  patch do
+    url "https://gitlab.gnome.org/GNOME/pango/commit/982445fe1c234b1ef5173556a73f659946c1a288.diff"
+    sha256 "56d18f4498aa1fd601d5f3c15ba6b848d05ef3734528dd46a9f798e1c42f0e24"
+  end
 
   def install
     system "./autogen.sh" if build.head?
@@ -92,33 +96,3 @@ class Pango < Formula
     system "./test"
   end
 end
-
-__END__
-For support color emoji on macOS, use "Apple Color Emoji" font for abstract font family "emoji".
-
----
-diff -r -u pango-1.42.4-origin/pango/pangocoretext-fontmap.c pango-1.42.4/pango/pangocoretext-fontmap.c
---- pango-1.42.4-origin/pango/pangocoretext-fontmap.c	2018-08-05 19:47:22.000000000 -0700
-+++ pango-1.42.4/pango/pangocoretext-fontmap.c	2019-01-17 14:42:03.000000000 -0800
-@@ -1323,7 +1323,8 @@
- 
-       if (G_UNLIKELY (!fontset))
-         {
--          /* If no font(set) could be loaded, we fallback to "Sans",
-+          /* If no font(set) could be loaded, we fallback to "Apple Color
-+           * Emoji" for emoji font, fallback to "Sans" for other fonts,
-            * which should always work on Mac. We try to adhere to the
-            * requested style at first.
-            */
-@@ -1333,7 +1334,10 @@
-           pango_font_description_free (key.desc);
- 
-           tmp_desc = pango_font_description_copy_static (desc);
--          pango_font_description_set_family_static (tmp_desc, "Sans");
-+          if (!strcmp (pango_font_description_get_family (tmp_desc), "emoji"))
-+            pango_font_description_set_family_static (tmp_desc, "Apple Color Emoji");
-+          else
-+            pango_font_description_set_family_static (tmp_desc, "Sans");
- 
-           pango_core_text_fontset_key_init (&key, ctfontmap, context, tmp_desc,
-                                             language);

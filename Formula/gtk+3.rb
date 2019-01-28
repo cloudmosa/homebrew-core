@@ -3,7 +3,7 @@ class Gtkx3 < Formula
   homepage "https://gtk.org/"
   url "https://download.gnome.org/sources/gtk+/3.24/gtk+-3.24.3.tar.xz"
   sha256 "5708fa534d964b1fb9a69d15758729d51b9a438471d4612dc153f595904803bd"
-  revision 3
+  revision 4
 
   bottle do
     sha256 "0ff37c31034d15b1e145cdbc430aeb5b0d4f745ddf0048ec2620f840c0f0f1c7" => :mojave
@@ -22,7 +22,19 @@ class Gtkx3 < Formula
   depends_on "pango"
 
   # see https://gitlab.gnome.org/GNOME/gtk/issues/1593
+  patch do
+    url "https://gitlab.gnome.org/GNOME/gtk/commit/ecfb540dabc58a5daef9c2f49230ae0f6f5c940e.diff"
+    sha256 "1ac20e99a161941b9ce779194468f8ccfacdf21a05662f7b500e9edd8ccebd4e"
+  end
+
+  # see https://gitlab.gnome.org/GNOME/gtk/issues/1600
   patch :DATA
+
+  # see https://gitlab.gnome.org/GNOME/gtk/issues/1618
+  patch do
+    url "https://gitlab.gnome.org/GNOME/gtk/commit/4378b6e4ef039c5a7f5340cf87a468f5b5db27d5.diff"
+    sha256 "29c47f14b7e0188a6d4caea21acbffadee9ad1db21b8aec8ca7f57c4603ac240"
+  end
 
   def install
     args = %W[
@@ -113,223 +125,6 @@ end
 
 __END__
 
-https://gitlab.gnome.org/GNOME/gtk/issues/1593
-Fix bug that gdk_monitor_get_workarea() always return workarea for main screen.
-Fix bug that gdk_monitor_get_geometry() return wrong gemotry that is NOT based on GdkScreen coordination,
-this bug causes gdk_display_get_monitor_at_point() can not find correct monitor at point.
-
-https://gitlab.gnome.org/GNOME/gtk/issues/1600
-Fix bug it crash when use mouse to select item in input method cadinate window
-
-https://gitlab.gnome.org/GNOME/gtk/issues/1618
-Fix bug that GTK Entry on macOS does not support press-and-hold to input accented characters.
-
----
-diff -u gtk+-3.24.2-origin/gdk/quartz/gdkdisplay-quartz.c gtk+-3.24.2/gdk/quartz/gdkdisplay-quartz.c
---- gtk+-3.24.2-origin/gdk/quartz/gdkdisplay-quartz.c	2018-12-12 06:08:38.000000000 -0800
-+++ gtk+-3.24.2/gdk/quartz/gdkdisplay-quartz.c	2019-01-15 10:56:58.000000000 -0800
-@@ -235,7 +235,7 @@
- }
- 
- static void
--configure_monitor (GdkMonitor *monitor)
-+configure_monitor (GdkMonitor *monitor, const GdkRectangle *screen_rect)
- {
-   GdkQuartzMonitor *quartz_monitor = GDK_QUARTZ_MONITOR (monitor);
-   CGSize disp_size = CGDisplayScreenSize (quartz_monitor->id);
-@@ -246,6 +246,13 @@
-                                 (int)trunc (disp_bounds.origin.y),
-                                 (int)trunc (disp_bounds.size.width),
-                                 (int)trunc (disp_bounds.size.height)};
-+
-+  if (screen_rect)
-+    {
-+      disp_geometry.x = disp_geometry.x - screen_rect->x;
-+      disp_geometry.y = screen_rect->height - (disp_geometry.y + disp_geometry.height) + screen_rect->y;
-+    }
-+
-   CGDisplayModeRef mode = CGDisplayCopyDisplayMode (quartz_monitor->id);
-   gint refresh_rate = (int)trunc (CGDisplayModeGetRefreshRate (mode));
- 
-@@ -265,6 +272,7 @@
- {
-   GdkQuartzDisplay *display = data;
-   GdkQuartzMonitor *monitor;
-+  GdkQuartzScreen *screen;
- 
-   /* Ignore the begin configuration signal. */
-   if (flags & kCGDisplayBeginConfigurationFlag)
-@@ -274,6 +282,8 @@
-                kCGDisplaySetMainFlag | kCGDisplayDesktopShapeChangedFlag |
-                kCGDisplayMirrorFlag | kCGDisplayUnMirrorFlag))
-     {
-+      GdkRectangle screen_rect;
-+
-       monitor = g_hash_table_lookup (display->monitors,
-                                      GINT_TO_POINTER (cg_display));
-       if (!monitor)
-@@ -286,7 +296,14 @@
-           gdk_display_monitor_added (GDK_DISPLAY (display),
-                                      GDK_MONITOR (monitor));
-         }
--      configure_monitor (GDK_MONITOR (monitor));
-+
-+      screen = GDK_QUARTZ_SCREEN (gdk_display_get_default_screen (display));
-+      screen_rect.x = screen->min_x;
-+      screen_rect.y = screen->min_y;
-+      screen_rect.width = screen->width;
-+      screen_rect.height = screen->height;
-+
-+      configure_monitor (GDK_MONITOR (monitor), &screen_rect);
-     }
-   else if (flags & (kCGDisplayRemoveFlag |  kCGDisplayDisabledFlag))
-     {
-@@ -351,14 +368,30 @@
- static void
- gdk_quartz_display_init (GdkQuartzDisplay *display)
- {
-+  int min_x = 0, min_y = 0, max_x = 0, max_y = 0;
-   uint32_t max_displays = 0, disp;
-   CGDirectDisplayID *displays;
-+  GdkRectangle screen_rect;
- 
-   CGGetActiveDisplayList (0, NULL, &max_displays);
-   display->monitors = g_hash_table_new_full (g_direct_hash, NULL,
-                                              NULL, g_object_unref);
-   displays = g_new0 (CGDirectDisplayID, max_displays);
-   CGGetActiveDisplayList (max_displays, displays, &max_displays);
-+
-+  for (disp = 0; disp < max_displays; ++disp)
-+    {
-+      CGRect bounds = CGDisplayBounds (displays[disp]);
-+      min_x = MIN (min_x, (int)trunc (bounds.origin.x));
-+      min_y = MIN (min_y, (int)trunc (bounds.origin.y));
-+      max_x = MAX (max_x, (int)trunc (bounds.origin.x + bounds.size.width));
-+      max_y = MAX (max_y, (int)trunc (bounds.origin.y + bounds.size.height));
-+    }
-+  screen_rect.x = min_x;
-+  screen_rect.y = min_y;
-+  screen_rect.width = max_x - min_x;
-+  screen_rect.height = max_y - min_y;
-+
-   for (disp = 0; disp < max_displays; ++disp)
-     {
-       GdkQuartzMonitor *monitor = g_object_new (GDK_TYPE_QUARTZ_MONITOR,
-@@ -366,7 +399,7 @@
-       monitor->id = displays[disp];
-       g_hash_table_insert (display->monitors, GINT_TO_POINTER (monitor->id),
-                            monitor);
--      configure_monitor (GDK_MONITOR (monitor));
-+      configure_monitor (GDK_MONITOR (monitor), &screen_rect);
-     }
-   CGDisplayRegisterReconfigurationCallback (display_reconfiguration_callback,
-                                             display);
-diff -u gtk+-3.24.2-origin/gdk/quartz/gdkmonitor-quartz.c gtk+-3.24.2/gdk/quartz/gdkmonitor-quartz.c
---- gtk+-3.24.2-origin/gdk/quartz/gdkmonitor-quartz.c	2018-12-12 06:08:38.000000000 -0800
-+++ gtk+-3.24.2/gdk/quartz/gdkmonitor-quartz.c	2019-01-15 11:14:52.000000000 -0800
-@@ -30,24 +30,30 @@
- gdk_quartz_monitor_get_workarea (GdkMonitor   *monitor,
-                                  GdkRectangle *dest)
- {
-+  int i;
-   GdkQuartzScreen *quartz_screen = GDK_QUARTZ_SCREEN(gdk_display_get_default_screen (monitor->display));
-   GdkQuartzMonitor *quartz_monitor = GDK_QUARTZ_MONITOR(monitor);
- 
-+  *dest = monitor->geometry;
-+
-   GDK_QUARTZ_ALLOC_POOL;
- 
-   NSArray *array = [NSScreen screens];
--  if (quartz_monitor->monitor_num < [array count])
-+  for (i = 0; i < [array count]; i++)
-     {
--      NSScreen *screen = [array objectAtIndex:quartz_monitor->monitor_num];
--      NSRect rect = [screen visibleFrame];
--
--      dest->x = rect.origin.x - quartz_screen->min_x;
--      dest->y = quartz_screen->height - (rect.origin.y + rect.size.height) + quartz_screen->min_y;
--      dest->width = rect.size.width;
--      dest->height = rect.size.height;
-+      NSScreen *screen = [array objectAtIndex:i];
-+      NSNumber *screen_num = screen.deviceDescription[@"NSScreenNumber"];
-+      CGDirectDisplayID display_id = screen_num.unsignedIntValue;
-+      if (display_id == quartz_monitor->id)
-+        {
-+          NSRect rect = [screen visibleFrame];
-+          dest->x = rect.origin.x - quartz_screen->min_x;
-+          dest->y = quartz_screen->height - (rect.origin.y + rect.size.height) + quartz_screen->min_y;
-+          dest->width = rect.size.width;
-+          dest->height = rect.size.height;
-+          break;
-+        }
-     }
--  else
--    *dest = monitor->geometry;
- 
-   GDK_QUARTZ_RELEASE_POOL;
- }
-diff -u gtk+-3.24.2-origin/gdk/quartz/gdkmonitor-quartz.h gtk+-3.24.2/gdk/quartz/gdkmonitor-quartz.h
---- gtk+-3.24.2-origin/gdk/quartz/gdkmonitor-quartz.h	2018-12-12 06:08:38.000000000 -0800
-+++ gtk+-3.24.2/gdk/quartz/gdkmonitor-quartz.h	2019-01-15 11:13:00.000000000 -0800
-@@ -29,7 +29,6 @@
- struct _GdkQuartzMonitor
- {
-   GdkMonitor parent;
--  gint monitor_num;
-   CGDirectDisplayID id;
- };
- 
-diff -u gtk+-3.24.2-origin/gdk/quartz/gdkscreen-quartz.c gtk+-3.24.2/gdk/quartz/gdkscreen-quartz.c
---- gtk+-3.24.2-origin/gdk/quartz/gdkscreen-quartz.c	2018-12-12 06:08:38.000000000 -0800
-+++ gtk+-3.24.2/gdk/quartz/gdkscreen-quartz.c	2019-01-15 10:09:53.000000000 -0800
-@@ -120,9 +120,9 @@
- static void
- gdk_quartz_screen_calculate_layout (GdkQuartzScreen *screen)
- {
--  int i, monitors;
-+  uint32_t max_displays = 0, disp;
-+  CGDirectDisplayID *displays;
-   int max_x, max_y;
--  GdkDisplay *display = gdk_screen_get_display (GDK_SCREEN (screen));
- 
-   screen->width = 0;
-   screen->height = 0;
-@@ -136,22 +136,20 @@
-    * covered by the monitors.  From this we can deduce the width
-    * and height of the root screen.
-    */
--  monitors = gdk_display_get_n_monitors (display);
--  for (i = 0; i < monitors; ++i)
--    {
--      GdkQuartzMonitor *monitor =
--           GDK_QUARTZ_MONITOR (gdk_display_get_monitor (display, i));
--      GdkRectangle rect;
--
--      gdk_monitor_get_geometry (GDK_MONITOR (monitor), &rect);
--      screen->min_x = MIN (screen->min_x, rect.x);
--      max_x = MAX (max_x, rect.x + rect.width);
--
--      screen->min_y = MIN (screen->min_y, rect.y);
--      max_y = MAX (max_y, rect.y + rect.height);
-+  CGGetActiveDisplayList (0, NULL, &max_displays);
-+  displays = g_new0 (CGDirectDisplayID, max_displays);
-+  CGGetActiveDisplayList (max_displays, displays, &max_displays);
- 
--      screen->mm_height += GDK_MONITOR (monitor)->height_mm;
--      screen->mm_width += GDK_MONITOR (monitor)->width_mm;
-+  for (disp = 0; disp < max_displays; ++disp)
-+    {
-+      CGRect bounds = CGDisplayBounds (displays[disp]);
-+      CGSize disp_size = CGDisplayScreenSize (displays[disp]);
-+      screen->min_x = MIN (screen->min_x, (int)trunc (bounds.origin.x));
-+      screen->min_y = MIN (screen->min_y, (int)trunc (bounds.origin.y));
-+      max_x = MAX (max_x, (int)trunc (bounds.origin.x + bounds.size.width));
-+      max_y = MAX (max_y, (int)trunc (bounds.origin.y + bounds.size.height));
-+      screen->mm_width += (int)trunc (disp_size.height);
-+      screen->mm_height += (int)trunc (disp_size.width);
-     }
- 
-   screen->width = max_x - screen->min_x;
 diff -u gtk+-3.24.3/modules/input/imquartz.c gtk+-3.24.3-working/modules/input/imquartz.c
 --- gtk+-3.24.3/modules/input/imquartz.c        2019-01-13 19:06:51.000000000 -0800
 +++ gtk+-3.24.3-working/modules/input/imquartz.c        2019-01-16 17:54:36.000000000 -0800
@@ -341,94 +136,4 @@ diff -u gtk+-3.24.3/modules/input/imquartz.c gtk+-3.24.3-working/modules/input/i
 +        return output_result (context, event->window);
        else
          return gtk_im_context_filter_keypress (qc->slave, event);
-     }
-diff -r -u gtk+-3.24.3/gdk/quartz/GdkQuartzView.c gtk+-3.24.3-working/gdk/quartz/GdkQuartzView.c
---- gtk+-3.24.3/gdk/quartz/GdkQuartzView.c	2019-01-07 17:18:10.000000000 -0800
-+++ gtk+-3.24.3-working/gdk/quartz/GdkQuartzView.c	2019-01-23 21:08:45.000000000 -0800
-@@ -31,7 +31,7 @@
-   if ((self = [super initWithFrame: frameRect]))
-     {
-       markedRange = NSMakeRange (NSNotFound, 0);
--      selectedRange = NSMakeRange (NSNotFound, 0);
-+      selectedRange = NSMakeRange (0, 0);
-     }
- 
-   return self;
-@@ -124,7 +124,8 @@
- -(void)unmarkText
- {
-   GDK_NOTE (EVENTS, g_message ("unmarkText"));
--  markedRange = selectedRange = NSMakeRange (NSNotFound, 0);
-+  selectedRange = NSMakeRange (0, 0);
-+  markedRange = NSMakeRange (NSNotFound, 0);
- 
-   g_object_set_data_full (G_OBJECT (gdk_window), TIC_MARKED_TEXT, NULL, g_free);
- }
-@@ -209,8 +210,15 @@
-   else
-    {
-       str = [string UTF8String];
-+      selectedRange = NSMakeRange ([string length], 0);
-    }
- 
-+  if (replacementRange.length > 0)
-+    {
-+      g_object_set_data (G_OBJECT (gdk_window), TIC_INSERT_TEXT_REPLACE_LEN,
-+                         GINT_TO_POINTER (replacementRange.length));
-+    }
-+
-   g_object_set_data_full (G_OBJECT (gdk_window), TIC_INSERT_TEXT, g_strdup (str), g_free);
-   GDK_NOTE (EVENTS, g_message ("insertText: set %s (%p, nsview %p): %s",
- 			     TIC_INSERT_TEXT, gdk_window, self,
-diff -r -u gtk+-3.24.3/gdk/quartz/GdkQuartzView.h gtk+-3.24.3-working/gdk/quartz/GdkQuartzView.h
---- gtk+-3.24.3/gdk/quartz/GdkQuartzView.h	2019-01-07 17:18:10.000000000 -0800
-+++ gtk+-3.24.3-working/gdk/quartz/GdkQuartzView.h	2019-01-22 20:31:06.000000000 -0800
-@@ -24,6 +24,7 @@
- #define TIC_SELECTED_POS  "tic-selected-pos"
- #define TIC_SELECTED_LEN  "tic-selected-len"
- #define TIC_INSERT_TEXT "tic-insert-text"
-+#define TIC_INSERT_TEXT_REPLACE_LEN "tic-insert-text-replace-len"
- #define TIC_IN_KEY_DOWN "tic-in-key-down"
- 
- /* GtkIMContext */
-diff -r -u gtk+-3.24.3/modules/input/imquartz.c gtk+-3.24.3-working/modules/input/imquartz.c
---- gtk+-3.24.3/modules/input/imquartz.c	2019-01-24 15:08:10.000000000 -0800
-+++ gtk+-3.24.3-working/modules/input/imquartz.c	2019-01-24 15:27:49.000000000 -0800
-@@ -129,8 +129,11 @@
- {
-   GtkIMContextQuartz *qc = GTK_IM_CONTEXT_QUARTZ (context);
-   gboolean retval = FALSE;
-+  int fixed_str_replace_len;
-   gchar *fixed_str, *marked_str;
- 
-+  fixed_str_replace_len = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (win),
-+      TIC_INSERT_TEXT_REPLACE_LEN));
-   fixed_str = g_strdup (g_object_get_data (G_OBJECT (win), TIC_INSERT_TEXT));
-   marked_str = g_strdup (g_object_get_data (G_OBJECT (win), TIC_MARKED_TEXT));
-   if (fixed_str)
-@@ -139,6 +142,13 @@
-       g_free (qc->preedit_str);
-       qc->preedit_str = NULL;
-       g_object_set_data (G_OBJECT (win), TIC_INSERT_TEXT, NULL);
-+      if (fixed_str_replace_len)
-+        {
-+          gboolean retval;
-+          g_object_set_data (G_OBJECT (win), TIC_INSERT_TEXT_REPLACE_LEN, 0);
-+          g_signal_emit_by_name (context, "delete-surrounding",
-+              -fixed_str_replace_len, fixed_str_replace_len, &retval);
-+        }
-       g_signal_emit_by_name (context, "commit", fixed_str);
-       g_signal_emit_by_name (context, "preedit_changed");
- 
-@@ -168,6 +178,11 @@
-     }
-   if (!fixed_str && !marked_str)
-     {
-+      unsigned int filtered =
-+	  GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (win),
-+					       GIC_FILTER_KEY));
-+      if (filtered)
-+        retval = TRUE;
-       if (qc->preedit_str && strlen (qc->preedit_str) > 0)
-         retval = TRUE;
      }
