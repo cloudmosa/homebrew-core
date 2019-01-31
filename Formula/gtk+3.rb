@@ -3,7 +3,7 @@ class Gtkx3 < Formula
   homepage "https://gtk.org/"
   url "https://download.gnome.org/sources/gtk+/3.24/gtk+-3.24.3.tar.xz"
   sha256 "5708fa534d964b1fb9a69d15758729d51b9a438471d4612dc153f595904803bd"
-  revision 4
+  revision 5
 
   bottle do
     sha256 "0ff37c31034d15b1e145cdbc430aeb5b0d4f745ddf0048ec2620f840c0f0f1c7" => :mojave
@@ -32,8 +32,8 @@ class Gtkx3 < Formula
 
   # see https://gitlab.gnome.org/GNOME/gtk/issues/1618
   patch do
-    url "https://gitlab.gnome.org/GNOME/gtk/commit/4378b6e4ef039c5a7f5340cf87a468f5b5db27d5.diff"
-    sha256 "29c47f14b7e0188a6d4caea21acbffadee9ad1db21b8aec8ca7f57c4603ac240"
+    url "https://gitlab.gnome.org/GNOME/gtk/commit/cfad43b80d15328f2e82ccc677ce634bd32a5560.diff"
+    sha256 "75f981cef20dbba9a56d843519a2f8fdc12ad88f4b4ced06150ceed6540886c6"
   end
 
   def install
