@@ -3,7 +3,7 @@ class Gtkx3 < Formula
   homepage "https://gtk.org/"
   url "https://download.gnome.org/sources/gtk+/3.24/gtk+-3.24.3.tar.xz"
   sha256 "5708fa534d964b1fb9a69d15758729d51b9a438471d4612dc153f595904803bd"
-  revision 5
+  revision 6
 
   bottle do
     sha256 "0ff37c31034d15b1e145cdbc430aeb5b0d4f745ddf0048ec2620f840c0f0f1c7" => :mojave
@@ -37,6 +37,10 @@ class Gtkx3 < Formula
   end
 
   def install
+    # Force GTK+3 set MACOSX_DEPLOYMENT_TARGET to 10.10, or the minimal version to be the set to
+    # the builder machine's OS version.
+    ENV.append "CFLAGS", "-mmacosx-version-min=10.10"
+
     args = %W[
       --enable-debug=minimal
       --disable-dependency-tracking
@@ -49,6 +53,7 @@ class Gtkx3 < Formula
     ]
 
     system "./configure", *args
+
     # necessary to avoid gtk-update-icon-cache not being found during make install
     bin.mkpath
     ENV.prepend_path "PATH", bin
