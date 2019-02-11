@@ -3,7 +3,7 @@ class Gtkx3 < Formula
   homepage "https://gtk.org/"
   url "https://download.gnome.org/sources/gtk+/3.24/gtk+-3.24.3.tar.xz"
   sha256 "5708fa534d964b1fb9a69d15758729d51b9a438471d4612dc153f595904803bd"
-  revision 6
+  revision 7
 
   bottle do
     sha256 "0ff37c31034d15b1e145cdbc430aeb5b0d4f745ddf0048ec2620f840c0f0f1c7" => :mojave
@@ -34,6 +34,12 @@ class Gtkx3 < Formula
   patch do
     url "https://gitlab.gnome.org/GNOME/gtk/commit/cfad43b80d15328f2e82ccc677ce634bd32a5560.diff"
     sha256 "75f981cef20dbba9a56d843519a2f8fdc12ad88f4b4ced06150ceed6540886c6"
+  end
+
+  # Fix crash after close a fullscreen window.
+  patch do
+    url "https://gitlab.gnome.org/GNOME/gtk/commit/7c88b88c67070cc15ac6cbc7e7479c6b23691b4a.diff"
+    sha256 "aa02b7951ceff194c3a63043ffc96a3446ed103df6d0d7b0d3af94d099fb1261"
   end
 
   def install
