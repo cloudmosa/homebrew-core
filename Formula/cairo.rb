@@ -6,9 +6,9 @@ class Cairo < Formula
   revision 2
 
   bottle do
-    sha256 "204d0a3df9ebebef6f553b4a583351f14b84ca8682537941f2c04ba971999444" => :mojave
-    sha256 "f518c9e6cd207647eedff70720fc99a85eaf143da866f4e679ffb0b6c6c50098" => :high_sierra
-    sha256 "1b0421e0159c06862b742e7868dbef23985afc2f1e282c4d985ff13725995a6d" => :sierra
+    root_url "https://dev-he.cloudmosa.com/~suyuan/homebrew"
+    rebuild 1
+    sha256 "fdfe3af48502b5172e36cea3aeb835594cdc573b9dbc3ec73217d086f627bd9a" => :mojave
   end
 
   head do
